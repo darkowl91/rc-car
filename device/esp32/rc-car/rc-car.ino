@@ -9,16 +9,21 @@
 const int pin_fwd = 27;
 const int pin_bwd = 26;
 const int pin_speed = 14;
-const int pin_servo = 33;
+const int pin_servo = 23;
 
 // l289n
 const int freq = 30000;
 const int pwmChannel = 0;
 const int resolution = 8;
 
-const int dutyCycleMin=140;
-const int dutyCycleMax=250;
+const int dutyCycleMin = 130;
+const int dutyCycleMax = 255;
 
+// servo
+Servo servo;
+int prev_angle = 0;
+const int servoMin = 0;
+const int servoMax = 180;
 
 void setup()
 {
@@ -43,48 +48,83 @@ void setup()
 
     ledcSetup(pwmChannel, freq, resolution);
     ledcAttachPin(pin_speed, pwmChannel);
+
+    servo.attach(pin_servo);
 }
 
 void handleControllerEvent() {
     // move forward - R2
     if (PS4.data.button.r2)
     {
-        uint8_t r2 = PS4.data.analog.button.r2;
+        uint8_t r2 = normolizeAnalogData(PS4.data.analog.button.r2, 35);
+        Serial.print("R2: ");
         Serial.println(r2);
-
-        int dutyCycle = map(r2, 15, 255, dutyCycleMin, dutyCycleMax);
-
-        digitalWrite(pin_fwd, HIGH);
-        digitalWrite(pin_bwd, LOW);
-
-        ledcWrite(pwmChannel, dutyCycle);
+        moveFroward(map(r2, 0, 255, dutyCycleMin, dutyCycleMax));
     }
 
      // move backward -  L2
     if (PS4.data.button.l2)
     {
-        uint8_t l2 = PS4.data.analog.button.l2;
+        uint8_t l2 = normolizeAnalogData(PS4.data.analog.button.l2, 40);
+        Serial.print("L2: ");
         Serial.println(l2);
+        moveBackward(map(l2, 0, 255, dutyCycleMin, dutyCycleMax));
+    }
 
-        int dutyCycle = map(l2, 15, 255, dutyCycleMin, dutyCycleMax);
-
-        digitalWrite(pin_bwd, HIGH);
-        digitalWrite(pin_fwd, LOW);
-
-        ledcWrite(pwmChannel, dutyCycle);
+    // stop - circle
+    if (PS4.data.button.circle)
+    {
+        Serial.println("O");
+        stop();
     }
 
     // direction - L3
-    // if (PS4.event.analog_move.stick.lx)
-    // {
-    //     Serial.print("Left Stick x at ");
-    //     int8_t x = PS4.data.analog.stick.lx;
-    //     servo.write(map(PS4.data.analog.stick.lx, 0, 255, 0, 180));
-    // }
+    if (PS4.event.analog_move.stick.lx)
+    {
+        int8_t x = normolizeAnalogData(PS4.data.analog.stick.lx, 4);
+        Serial.print("L3: ");
+        Serial.println(x);
+        rotate(map(PS4.data.analog.stick.lx, -128, 127, servoMin, servoMax));
+    }
 }
 
+void moveFroward(int dutyCycle)
+{
+    digitalWrite(pin_bwd, LOW);
+    digitalWrite(pin_fwd, HIGH);
+    ledcWrite(pwmChannel, dutyCycle);
+}
 
+void moveBackward(int dutyCycle)
+{
+    digitalWrite(pin_fwd, LOW);
+    digitalWrite(pin_bwd, HIGH);
+    ledcWrite(pwmChannel, dutyCycle);
+}
 
+void stop()
+{
+    digitalWrite(pin_bwd, LOW);
+    digitalWrite(pin_fwd, LOW);
+    ledcWrite(pwmChannel, 0);
+}
+
+void rotate(int angle) 
+{
+    if (prev_angle != angle)
+    {
+        prev_angle = angle;
+        servo.write(angle);
+    }
+}
+
+int normolizeAnalogData(uint8_t data, uint8_t deadzone) {
+    if (abs(data) < deadzone)
+    {
+        return 0;
+    }
+    return data;
+}
 
 void loop()
 {
