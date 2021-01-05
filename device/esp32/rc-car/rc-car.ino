@@ -3,7 +3,6 @@
 // Upload speed 115200
 
 #include <PS4Controller.h>
-#include <ESP32Servo.h>
 
 // PIN
 const int pin_fwd = 27;
@@ -12,18 +11,20 @@ const int pin_speed = 14;
 const int pin_servo = 23;
 
 // l289n
-const int freq = 30000;
-const int pwmChannel = 0;
-const int resolution = 8;
-
-const int dutyCycleMin = 130;
-const int dutyCycleMax = 255;
+const int motor_pwmChannel = 1;
+const int motor_res = 8;
+const int motor_freq = 30000;
+const int motor_dutyCycleMin = 15;
+const int motor_dutyCycleMax = 255;
 
 // servo
-Servo servo;
 int prev_angle = 0;
-const int servoMin = 0;
-const int servoMax = 180;
+const int servo_pwmChannel = 2;
+const int servo_res = 16;
+const int servo_freq = 50;
+const int servo_dutyCycleMin = 3000;
+const int servo_dutyCycleMax = 5500;
+
 
 void setup()
 {
@@ -46,10 +47,11 @@ void setup()
     pinMode(pin_speed, OUTPUT);
     digitalWrite(pin_speed, LOW);
 
-    ledcSetup(pwmChannel, freq, resolution);
-    ledcAttachPin(pin_speed, pwmChannel);
+    ledcSetup(motor_pwmChannel, motor_freq, motor_res);
+    ledcAttachPin(pin_speed, motor_pwmChannel);
 
-    servo.attach(pin_servo);
+    ledcSetup(servo_pwmChannel, servo_freq, servo_res);
+    ledcAttachPin(pin_servo, servo_pwmChannel);
 }
 
 void handleControllerEvent() {
@@ -57,34 +59,36 @@ void handleControllerEvent() {
     if (PS4.data.button.r2)
     {
         uint8_t r2 = normolizeAnalogData(PS4.data.analog.button.r2, 35);
-        Serial.print("R2: ");
-        Serial.println(r2);
-        moveFroward(map(r2, 0, 255, dutyCycleMin, dutyCycleMax));
+       // Serial.print("R2: ");
+        //Serial.println(r2);
+        moveFroward(map(r2, 0, 255, motor_dutyCycleMin, motor_dutyCycleMax));
     }
 
      // move backward -  L2
     if (PS4.data.button.l2)
     {
         uint8_t l2 = normolizeAnalogData(PS4.data.analog.button.l2, 40);
-        Serial.print("L2: ");
-        Serial.println(l2);
-        moveBackward(map(l2, 0, 255, dutyCycleMin, dutyCycleMax));
+       // Serial.print("L2: ");
+       // Serial.println(l2);
+        moveBackward(map(l2, 0, 255, motor_dutyCycleMin, motor_dutyCycleMax));
     }
 
     // stop - circle
     if (PS4.data.button.circle)
     {
-        Serial.println("O");
+       // Serial.println("O");
         stop();
     }
 
     // direction - L3
-    if (PS4.event.analog_move.stick.lx)
+    if (PS4.event.analog_move.stick.lx && abs(PS4.data.analog.stick.lx) > 10)
     {
-        int8_t x = normolizeAnalogData(PS4.data.analog.stick.lx, 4);
-        Serial.print("L3: ");
-        Serial.println(x);
-        rotate(map(PS4.data.analog.stick.lx, -128, 127, servoMin, servoMax));
+        // int x = normolizeAnalogData(PS4.data.analog.stick.lx, 10);
+        // Serial.print("L3: ");
+        // Serial.println(x);
+        int d = map(PS4.data.analog.stick.lx, -128, 127, servo_dutyCycleMin, servo_dutyCycleMax);
+        Serial.println(d);
+        rotate(d);
     }
 }
 
@@ -92,33 +96,36 @@ void moveFroward(int dutyCycle)
 {
     digitalWrite(pin_bwd, LOW);
     digitalWrite(pin_fwd, HIGH);
-    ledcWrite(pwmChannel, dutyCycle);
+    ledcWrite(motor_pwmChannel, dutyCycle);
 }
 
 void moveBackward(int dutyCycle)
 {
     digitalWrite(pin_fwd, LOW);
     digitalWrite(pin_bwd, HIGH);
-    ledcWrite(pwmChannel, dutyCycle);
+    ledcWrite(motor_pwmChannel, dutyCycle);
 }
 
 void stop()
 {
     digitalWrite(pin_bwd, LOW);
     digitalWrite(pin_fwd, LOW);
-    ledcWrite(pwmChannel, 0);
+    ledcWrite(motor_pwmChannel, 0);
+    ledcWrite(servo_pwmChannel, 0);
 }
 
-void rotate(int angle) 
+void rotate(int dutyCycle) 
 {
-    if (prev_angle != angle)
+    if (prev_angle != dutyCycle)
     {
-        prev_angle = angle;
-        servo.write(angle);
+        prev_angle = dutyCycle;
+        ledcWrite(servo_pwmChannel, dutyCycle);
+        delay(2);
     }
 }
 
-int normolizeAnalogData(uint8_t data, uint8_t deadzone) {
+int normolizeAnalogData(int data, int deadzone)
+{
     if (abs(data) < deadzone)
     {
         return 0;
@@ -135,4 +142,12 @@ void loop()
     //     delay(500);
     //     Serial.println(dutyCycle);
     // }
+
+    // test servo angle control
+    // for(int dutyCycle = servo_dutyCycleMin; dutyCycle <= servo_dutyCycleMax; dutyCycle=dutyCycle+10) {
+    //     rotate(dutyCycle);
+    //     delay(10);
+    //     Serial.println(dutyCycle);
+    // }
+
 }
