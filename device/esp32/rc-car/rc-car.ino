@@ -4,150 +4,176 @@
 
 #include <PS4Controller.h>
 
+// controller mac could be configured with SixaxisPairTool
+#define PS4_CONTROLLER_MAC "03:03:03:03:03:03"
+
 // PIN
-const int pin_fwd = 27;
-const int pin_bwd = 26;
-const int pin_speed = 14;
-const int pin_servo = 23;
+const int PIN_FWD   = 27;
+const int PIN_BWD   = 26;
+const int PIN_EN    = 14;
+const int PIN_SERVO = 23;
+const int PIN_LED   = 5;
 
 // l289n
-const int motor_pwmChannel = 1;
-const int motor_res = 8;
-const int motor_freq = 30000;
-const int motor_dutyCycleMin = 15;
-const int motor_dutyCycleMax = 255;
+const int MOTOR_PWM_CH  = 1;
+const int MOTOR_RES     = 8;
+const int MOTOR_FREQ    = 30000;
+const int MOTOR_MIN     = 140;
+const int MOTOR_MAX     = 255;
 
 // servo
-int prev_angle = 0;
-const int servo_pwmChannel = 2;
-const int servo_res = 16;
-const int servo_freq = 50;
-const int servo_dutyCycleMin = 3000;
-const int servo_dutyCycleMax = 5500;
+const int SERVO_PWM_CH  = 2;
+const int SERVO_RES     = 16;
+const int SERVO_FREQ    = 50;
+const int SERVO_MIN     = 3000;
+const int SERVO_MAX     = 5500;
 
+typedef enum
+{
+    FORWARD = PIN_FWD,
+    BACKWARD = PIN_BWD
+} Direction;
+
+int prevRotateValue = 0;
 
 void setup()
 {
     Serial.begin(115200);
 
-    // connect to dualshock 4, using predifined mac with SixaxisPairTool
-    if(!PS4.begin("03:03:03:03:03:03")){
-        Serial.println("Could not begin PS4");
+    // connect to dualshock 4
+    if (PS4.begin(PS4_CONTROLLER_MAC))
+    {
+        // attach ps cpntroller callbacks
+        PS4.attachOnConnect(handleConnect);
+        PS4.attachOnDisconnect(handleDisconnect);
+        PS4.attach(handleControllerEvents);
     }
-    // attach controller callback
-    PS4.attach(handleControllerEvent);
+    else
+    {
+        Serial.println("Could not begin PS4!");
+    }
 
     // setup pins
-    pinMode(pin_fwd, OUTPUT);
-    digitalWrite(pin_fwd, LOW);
-    
-    pinMode(pin_bwd, OUTPUT);
-    digitalWrite(pin_bwd, LOW);
+    pinMode(PIN_FWD, OUTPUT);
+    pinMode(PIN_BWD, OUTPUT);
+    pinMode(PIN_SERVO, OUTPUT);
+    pinMode(PIN_EN, OUTPUT);
+    pinMode(PIN_LED, OUTPUT);
+    digitalWrite(PIN_LED, !digitalRead(PIN_LED));
 
-    pinMode(pin_speed, OUTPUT);
-    digitalWrite(pin_speed, LOW);
-
-    ledcSetup(motor_pwmChannel, motor_freq, motor_res);
-    ledcAttachPin(pin_speed, motor_pwmChannel);
-
-    ledcSetup(servo_pwmChannel, servo_freq, servo_res);
-    ledcAttachPin(pin_servo, servo_pwmChannel);
+    // setup PWM using default ledc
+    ledcSetup(MOTOR_PWM_CH, MOTOR_FREQ, MOTOR_RES);
+    ledcAttachPin(PIN_EN, MOTOR_PWM_CH);
+    ledcSetup(SERVO_PWM_CH, SERVO_FREQ, SERVO_RES);
+    ledcAttachPin(PIN_SERVO, SERVO_PWM_CH);
 }
 
-void handleControllerEvent() {
-    // move forward - R2
-    if (PS4.data.button.r2)
+void handleConnect()
+{
+    Serial.println("Controller connected");
+    // reset outputs
+    digitalWrite(PIN_FWD, LOW);
+    digitalWrite(PIN_BWD, LOW);
+    digitalWrite(PIN_SERVO, LOW);
+    digitalWrite(PIN_EN, LOW);
+    ledcWrite(SERVO_PWM_CH, 0);
+    ledcWrite(MOTOR_PWM_CH, 0);
+    // notify about sucsess connection with builti in led
+    digitalWrite(PIN_LED, !digitalRead(PIN_LED));
+    // set ps4 controller led to blue
+    PS4.setLed(0, 0, 255);
+    PS4.sendToController();
+}
+
+void handleDisconnect()
+{
+    Serial.println("Controller disconnected");
+    // reset outputs
+    digitalWrite(PIN_FWD, LOW);
+    digitalWrite(PIN_BWD, LOW);
+    digitalWrite(PIN_SERVO, LOW);
+    digitalWrite(PIN_EN, LOW);
+    ledcWrite(SERVO_PWM_CH, 0);
+    ledcWrite(MOTOR_PWM_CH, 0);
+
+    // notify about disconnect with built in led
+    digitalWrite(PIN_LED, !digitalRead(PIN_LED));
+}
+
+const uint8_t CONTROLLER_OFFSET_R2  = 30;
+const uint8_t CONTROLLER_OFFSET_L2  = 40;
+const int8_t CONTROLLER_OFFSET_L3   = 15;
+
+void handleControllerEvents()
+{
+    // move forward
+    if (PS4.data.button.r2 && (PS4.data.analog.button.r2 > CONTROLLER_OFFSET_R2))
     {
-        uint8_t r2 = normolizeAnalogData(PS4.data.analog.button.r2, 35);
-       // Serial.print("R2: ");
-        //Serial.println(r2);
-        moveFroward(map(r2, 0, 255, motor_dutyCycleMin, motor_dutyCycleMax));
+        move(PS4.data.analog.button.r2, CONTROLLER_OFFSET_R2, 255, Direction::FORWARD);
     }
 
-     // move backward -  L2
-    if (PS4.data.button.l2)
+    // move backward
+    if (PS4.data.button.l2 && (PS4.data.analog.button.l2 > CONTROLLER_OFFSET_L2))
     {
-        uint8_t l2 = normolizeAnalogData(PS4.data.analog.button.l2, 40);
-       // Serial.print("L2: ");
-       // Serial.println(l2);
-        moveBackward(map(l2, 0, 255, motor_dutyCycleMin, motor_dutyCycleMax));
+        move(PS4.data.analog.button.l2, CONTROLLER_OFFSET_L2, 255, Direction::BACKWARD);
     }
 
-    // stop - circle
-    if (PS4.data.button.circle)
+    // steering
+    if (PS4.event.analog_move.stick.lx && abs(PS4.data.analog.stick.lx) > CONTROLLER_OFFSET_L3)
     {
-       // Serial.println("O");
+        rotate(PS4.data.analog.stick.lx, -127, 128);
+    }
+
+    // stop, reset all pins to LOW
+    if (PS4.data.button.circle && PS4.event.button_down.circle)
+    {
         stop();
     }
+}
 
-    // direction - L3
-    if (PS4.event.analog_move.stick.lx && abs(PS4.data.analog.stick.lx) > 10)
+void move(int value, int min, int max, Direction direction)
+{
+    if (value == min)
     {
-        // int x = normolizeAnalogData(PS4.data.analog.stick.lx, 10);
-        // Serial.print("L3: ");
-        // Serial.println(x);
-        int d = map(PS4.data.analog.stick.lx, -128, 127, servo_dutyCycleMin, servo_dutyCycleMax);
-        Serial.println(d);
-        rotate(d);
+        digitalWrite(direction, LOW);
+        ledcWrite(MOTOR_PWM_CH, 0);
+        return;
     }
+
+    int duty = map(value, min, max, MOTOR_MIN, MOTOR_MAX);
+    Serial.print(direction == Direction::FORWARD ? "foward: " : "backward: ");
+    Serial.println(duty);
+
+    digitalWrite(direction, HIGH);
+    digitalWrite(direction == Direction::FORWARD ? direction : Direction::BACKWARD, LOW);
+    ledcWrite(MOTOR_PWM_CH, duty);
 }
 
-void moveFroward(int dutyCycle)
+void rotate(int value, int min, int max)
 {
-    digitalWrite(pin_bwd, LOW);
-    digitalWrite(pin_fwd, HIGH);
-    ledcWrite(motor_pwmChannel, dutyCycle);
-}
-
-void moveBackward(int dutyCycle)
-{
-    digitalWrite(pin_fwd, LOW);
-    digitalWrite(pin_bwd, HIGH);
-    ledcWrite(motor_pwmChannel, dutyCycle);
-}
-
-void stop()
-{
-    digitalWrite(pin_bwd, LOW);
-    digitalWrite(pin_fwd, LOW);
-    ledcWrite(motor_pwmChannel, 0);
-    ledcWrite(servo_pwmChannel, 0);
-}
-
-void rotate(int dutyCycle) 
-{
-    if (prev_angle != dutyCycle)
+    if (prevRotateValue != value)
     {
-        prev_angle = dutyCycle;
-        ledcWrite(servo_pwmChannel, dutyCycle);
+        int duty = map(value, min, max, SERVO_MAX, SERVO_MIN);
+        Serial.print("rotate: ");
+        Serial.println(duty);
+        ledcWrite(SERVO_PWM_CH, duty);
         delay(2);
     }
 }
 
-int normolizeAnalogData(int data, int deadzone)
-{
-    if (abs(data) < deadzone)
-    {
-        return 0;
-    }
-    return data;
+void stop() {
+    Serial.println("Stop.");
+
+    ledcWrite(MOTOR_PWM_CH, 0);
+    ledcWrite(SERVO_PWM_CH, 0);
+    digitalWrite(PIN_FWD, LOW);
+    digitalWrite(PIN_BWD, LOW);
+    digitalWrite(PIN_EN, LOW);
+    digitalWrite(PIN_SERVO, LOW);
 }
 
 void loop()
 {
-    // test motor speed control
-    // digitalWrite(pin_fwd, HIGH);
-    // for(int dutyCycle = 0; dutyCycle <= 1000; dutyCycle++) {
-    //     ledcWrite(pwmChannel, dutyCycle);
-    //     delay(500);
-    //     Serial.println(dutyCycle);
-    // }
-
-    // test servo angle control
-    // for(int dutyCycle = servo_dutyCycleMin; dutyCycle <= servo_dutyCycleMax; dutyCycle=dutyCycle+10) {
-    //     rotate(dutyCycle);
-    //     delay(10);
-    //     Serial.println(dutyCycle);
-    // }
-
+    // empty, cancel RTOS Task
+    vTaskDelete(NULL);
 }
