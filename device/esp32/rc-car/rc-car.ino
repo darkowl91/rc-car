@@ -17,8 +17,8 @@ const int PIN_LED   = 5;
 // l289n
 const int MOTOR_PWM_CH  = 1;
 const int MOTOR_RES     = 8;
-const int MOTOR_FREQ    = 30000;
-const int MOTOR_MIN     = 140;
+const int MOTOR_FREQ    = 40000;
+const int MOTOR_MIN     = 100;
 const int MOTOR_MAX     = 255;
 
 // servo
@@ -70,7 +70,7 @@ void setup()
 
 void handleConnect()
 {
-    Serial.println("Controller connected");
+    // Serial.println("Controller connected");
     // reset outputs
     digitalWrite(PIN_FWD, LOW);
     digitalWrite(PIN_BWD, LOW);
@@ -87,7 +87,7 @@ void handleConnect()
 
 void handleDisconnect()
 {
-    Serial.println("Controller disconnected");
+    // Serial.println("Controller disconnected");
     // reset outputs
     digitalWrite(PIN_FWD, LOW);
     digitalWrite(PIN_BWD, LOW);
@@ -141,11 +141,11 @@ void move(int value, int min, int max, Direction direction)
     }
 
     int duty = map(value, min, max, MOTOR_MIN, MOTOR_MAX);
-    Serial.print(direction == Direction::FORWARD ? "foward: " : "backward: ");
-    Serial.println(duty);
+    // Serial.print(direction == Direction::FORWARD ? "foward: " : "backward: ");
+    // Serial.println(duty);
 
+    digitalWrite((direction == Direction::FORWARD ? Direction::BACKWARD : Direction::FORWARD), LOW);
     digitalWrite(direction, HIGH);
-    digitalWrite(direction == Direction::FORWARD ? direction : Direction::BACKWARD, LOW);
     ledcWrite(MOTOR_PWM_CH, duty);
 }
 
@@ -154,15 +154,15 @@ void rotate(int value, int min, int max)
     if (prevRotateValue != value)
     {
         int duty = map(value, min, max, SERVO_MAX, SERVO_MIN);
-        Serial.print("rotate: ");
-        Serial.println(duty);
+        // Serial.print("rotate: ");
+        // Serial.println(duty);
         ledcWrite(SERVO_PWM_CH, duty);
         delay(2);
     }
 }
 
 void stop() {
-    Serial.println("Stop.");
+    // Serial.println("Stop.");
 
     ledcWrite(MOTOR_PWM_CH, 0);
     ledcWrite(SERVO_PWM_CH, 0);
