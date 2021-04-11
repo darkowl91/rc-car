@@ -1,4 +1,4 @@
-// Board: ESP32 wroom 32
+// Board: ESP32 wroom-32
 // https://dl.espressif.com/dl/package_esp32_index.json
 // Upload speed 115200
 
@@ -43,7 +43,7 @@ void setup()
     // connect to dualshock 4
     if (PS4.begin(PS4_CONTROLLER_MAC))
     {
-        // attach ps cpntroller callbacks
+        // attach ps controller callbacks
         PS4.attachOnConnect(handleConnect);
         PS4.attachOnDisconnect(handleDisconnect);
         PS4.attach(handleControllerEvents);
@@ -78,7 +78,7 @@ void handleConnect()
     digitalWrite(PIN_EN, LOW);
     ledcWrite(SERVO_PWM_CH, 0);
     ledcWrite(MOTOR_PWM_CH, 0);
-    // notify about sucsess connection with builti in led
+    // notify about success connection with built in led
     digitalWrite(PIN_LED, !digitalRead(PIN_LED));
     // set ps4 controller led to blue
     PS4.setLed(0, 0, 255);
